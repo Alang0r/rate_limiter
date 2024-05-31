@@ -3,7 +3,7 @@ package rateLimiter
 import "sync"
 
 type Action struct {
-	Name             string
+	Type             string
 	AvailableActions uint64
 	mu               sync.Mutex // parallel access control
 }

@@ -45,15 +45,23 @@ func (rl *BasicRateLimiter) ResetRules() {
 	rl.rules = nil
 }
 
-func (rl *BasicRateLimiter) CheckLimit(cID string, actionName string) error {
+func (rl *BasicRateLimiter) CheckLimit(cID string, actionType string) error {
 	if clientActions, ok := rl.clients[cID]; !ok {
 		// check rules slice for action, count avilable for cllient, record it
+		for _, rule := range rl.rules {
+			if rule.ActionType == actionType {
+				rl.clients[cID] = append(rl.clients[cID], Action{
+					Type:             actionType,
+					AvailableActions: rule.AvailableActions,
+				})
+			}
+		}
 
 	} else {
 		// clientID found in slice, check if action is available, change available actions count
 		for _, action := range clientActions {
 
-			if action.Name == actionName {
+			if action.Type == actionType {
 				if action.AvailableActions < 1 {
 					return fmt.Errorf(errForbidden)
 				} else {
