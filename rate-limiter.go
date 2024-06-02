@@ -1,4 +1,4 @@
-package rateLimiter
+package ratelimiter
 
 import "fmt"
 
@@ -13,31 +13,50 @@ type RateLimiter interface {
 	ResetLimit() // reset limit for request
 }
 
+// BasicRateLimiter - basic ratelimiter implementation
 type BasicRateLimiter struct {
-	rules   map[string]Rule
-	clients map[string][]Action
+	rules map[string][]Rule // [clientID][]rule
 }
 
-func NewBasicRateLimiter(rules map[string]Rule) *BasicRateLimiter {
-	rl := &BasicRateLimiter{
-		rules: rules,
+// NewBasicRateLimiter - BasicRateLimiter constructor, pass rules for predeclared set of rules
+func NewBasicRateLimiter(rules map[string][]Rule) *BasicRateLimiter {
+	// init rules
+	rl := &BasicRateLimiter{}
+	if rules != nil {
+		rl.rules = rules
+	} else {
+		rules = make(map[string][]Rule, 0)
 	}
+
 	return rl
 }
 
-func (rl *BasicRateLimiter) AddRule(name string, rule Rule) {
-	rl.rules[name] = rule
+// AddRule - add rules to the ratelimiter one by one
+func (rl *BasicRateLimiter) AddRule(clienID string, rule Rule) error {
+	if _, ok := rl.rules[clienID]; ok {
+		return fmt.Errorf(errRuleAlreadyExists)
+	}
+
+	rl.rules[clienID] = append(rl.rules[clienID], rule)
+	return nil
+
 }
 
-func (rl *BasicRateLimiter) DeleteRule(name string) {
-	delete(rl.rules, name)
+func (rl *BasicRateLimiter) DeleteRule(clienID string) {
+	//ToDo: parallel acess lock
+	delete(rl.rules, clienID)
 }
 
-func (rl *BasicRateLimiter) GetRules() map[string]Rule {
-	return rl.rules
+func (rl *BasicRateLimiter) GetRules(clientID string) []Rule {
+	rules, ok := rl.rules[clientID]
+	if !ok {
+		return nil
+	}
+	return rules
+
 }
 
-func (rl *BasicRateLimiter) SetRules(ruleSet map[string]Rule) {
+func (rl *BasicRateLimiter) SetRules(ruleSet map[string][]Rule) {
 	rl.rules = ruleSet
 }
 
@@ -45,32 +64,20 @@ func (rl *BasicRateLimiter) ResetRules() {
 	rl.rules = nil
 }
 
-func (rl *BasicRateLimiter) CheckLimit(cID string, actionType string) error {
-	if clientActions, ok := rl.clients[cID]; !ok {
-		// check rules slice for action, count avilable for cllient, record it
-		for _, rule := range rl.rules {
-			if rule.ActionType == actionType {
-				rl.clients[cID] = append(rl.clients[cID], Action{
-					Type:             actionType,
-					AvailableActions: rule.AvailableActions,
-				})
-			}
-		}
-
+func (rl *BasicRateLimiter) CheckLimit(clientID string, actionType string) error {
+	if ruleSet, ok := rl.rules[clientID]; !ok {
+		// no rules for client - access granted
+		return nil
 	} else {
-		// clientID found in slice, check if action is available, change available actions count
-		for _, action := range clientActions {
-
-			if action.Type == actionType {
-				if action.AvailableActions < 1 {
-					return fmt.Errorf(errForbidden)
+		for _, rule := range ruleSet {
+			if rule.ActionType == actionType {
+				if rule.AvailableActions > 0 {
+					// decriment available actions and grant accesss
 				} else {
-					action.Record()
-					return nil
+					return fmt.Errorf(errForbidden)
 				}
 			}
 		}
 	}
-
 	return nil
 }

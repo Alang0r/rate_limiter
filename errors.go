@@ -1,7 +1,7 @@
-package rateLimiter
+package ratelimiter
 
 const (
 	errForbidden         = "action forbidden"
 	
-	errRuleAlreadyExists = "rule with protvided name already exists"
+	errRuleAlreadyExists = "rule is already exists for provided clientID"
 )
