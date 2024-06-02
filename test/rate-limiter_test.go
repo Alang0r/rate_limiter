@@ -17,7 +17,7 @@ func TestRateLimiter(t *testing.T) {
 		AvailableActions: 0,
 	}
 
-	limiter := ratelimiter.NewBasicRateLimiter(nil)
+	limiter := ratelimiter.NewBasicRateLimiter(nil, nil)
 
 	limiter.AddRule("client1", r1)
 	limiter.AddRule("client2", r2)
