@@ -1,10 +1,14 @@
 package ratelimiter
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
+// RateLimiter - ...
 type RateLimiter interface {
 	AddRuleAddRule(name string, rule Rule) // add a single rule
-	DeleteRules(name string)                // delete all rules
+	DeleteRules(name string)               // delete all rule
 	SetRules(ruleSet map[string]Rule)      // define a set of rules
 	ResetRules()                           // delete all rules
 	GetRules() map[string]Rule             // get all rules
@@ -16,6 +20,7 @@ type RateLimiter interface {
 // BasicRateLimiter - basic ratelimiter implementation
 type BasicRateLimiter struct {
 	rules map[string][]Rule // [clientID][]rule
+	mu    sync.Mutex
 }
 
 // NewBasicRateLimiter - BasicRateLimiter constructor, pass rules for predeclared set of rules
@@ -33,6 +38,9 @@ func NewBasicRateLimiter(rules map[string][]Rule) *BasicRateLimiter {
 
 // AddRule - add rules to the ratelimiter one by one, by clientID
 func (rl *BasicRateLimiter) AddRule(clienID string, rule Rule) error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
 	if _, ok := rl.rules[clienID]; ok {
 		return fmt.Errorf(errRuleAlreadyExists)
 	}
@@ -44,7 +52,9 @@ func (rl *BasicRateLimiter) AddRule(clienID string, rule Rule) error {
 
 // DeleteRules - deletes all rules for provided clientID
 func (rl *BasicRateLimiter) DeleteRules(clienID string) {
-	//ToDo: parallel acess lock
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	
 	delete(rl.rules, clienID)
 }
 
@@ -60,16 +70,23 @@ func (rl *BasicRateLimiter) GetRules(clientID string) []Rule {
 
 // SetRules - set rules by rules map
 func (rl *BasicRateLimiter) SetRules(ruleSet map[string][]Rule) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
 	rl.rules = ruleSet
 }
 
 // ResetRules - reset all rules for all clientIDs
 func (rl *BasicRateLimiter) ResetRules() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
 	rl.rules = make(map[string][]Rule)
 }
 
 // CheckLimit - checks for available actions by clientID and actioontype
 func (rl *BasicRateLimiter) CheckLimit(clientID string, actionID string) error {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	
 	if ruleSet, ok := rl.rules[clientID]; !ok {
 		// no rules for client - access granted
 		return nil
