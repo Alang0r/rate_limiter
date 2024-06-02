@@ -41,8 +41,8 @@ func (rl *BasicRateLimiter) AddRule(clienID string, rule Rule) error {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	if _, ok := rl.rules[clienID]; ok {
-		return fmt.Errorf(errRuleAlreadyExists)
+	if _, ok := rl.rules[clienID]; !ok {
+		rl.rules[clienID] = make([]Rule, 1)
 	}
 
 	rl.rules[clienID] = append(rl.rules[clienID], rule)
@@ -83,25 +83,21 @@ func (rl *BasicRateLimiter) ResetRules() {
 }
 
 // CheckLimit - checks for available actions by clientID and actioontype
-func (rl *BasicRateLimiter) CheckLimit(clientID string, actionID uint64) error {
+func (rl *BasicRateLimiter) CheckLimit(clientID string, actionID uint64) (uint64, error) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	if ruleSet, ok := rl.rules[clientID]; !ok {
-		// no rules for client - access granted
-		return nil
-	} else {
+	if ruleSet, ok := rl.rules[clientID]; ok {
 		for _, rule := range ruleSet {
 			if rule.ActionID == actionID {
 				if rule.AvailableActions > 0 {
 					rule.AvailableActions--
-					return nil
+					return rule.AvailableActions, nil
 					// decriment available actions and grant accesss
-				} else {
-					return fmt.Errorf(errForbidden)
 				}
+				return 0, fmt.Errorf(errForbidden)
 			}
 		}
 	}
-	return nil
+	return 0, nil
 }
