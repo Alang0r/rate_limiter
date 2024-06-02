@@ -19,18 +19,21 @@ type RateLimiter interface {
 
 // BasicRateLimiter - basic ratelimiter implementation
 type BasicRateLimiter struct {
-	rules map[string][]Rule // [clientID][]rule
-	mu    sync.Mutex
+	clients map[string]int // [clientID]ruleSet
+	rules   [][]Rule
+	mu      sync.Mutex
 }
 
 // NewBasicRateLimiter - BasicRateLimiter constructor, pass rules for predeclared set of rules
-func NewBasicRateLimiter(rules map[string][]Rule) *BasicRateLimiter {
+func NewBasicRateLimiter(clients map[string]int, rules [][]Rule) *BasicRateLimiter {
 	// init rules
 	rl := &BasicRateLimiter{}
-	if rules != nil {
+	if clients != nil && rules != nil {
+		rl.clients = clients
 		rl.rules = rules
 	} else {
-		rules = make(map[string][]Rule, 0)
+		rl.clients = make(map[string]int)
+		rl.rules = make([][]Rule, 0)
 	}
 
 	return rl
@@ -41,45 +44,58 @@ func (rl *BasicRateLimiter) AddRule(clienID string, rule Rule) error {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	if _, ok := rl.rules[clienID]; !ok {
-		rl.rules[clienID] = make([]Rule, 1)
+	if ruleSet, ok := rl.clients[clienID]; !ok {
+		rl.rules[ruleSet] = make([]Rule, 1)
+	} else {
+		rl.rules[ruleSet] = append(rl.rules[ruleSet], rule)
 	}
 
-	rl.rules[clienID] = append(rl.rules[clienID], rule)
 	return nil
 
 }
 
 // DeleteRules - deletes all rules for provided clientID
-func (rl *BasicRateLimiter) DeleteRules(clienID string) {
+func (rl *BasicRateLimiter) DeleteRules(clienID string) error {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	delete(rl.rules, clienID)
+	if ruleSet, ok := rl.clients[clienID]; !ok {
+		return fmt.Errorf(errNoRulesForClient)
+	} else {
+		rl.rules = append(rl.rules[:ruleSet], rl.rules[ruleSet+1:]...)
+	}
+	return nil
 }
 
 // GetRules - returns all rules for provided clientID
-func (rl *BasicRateLimiter) GetRules(clientID string) []Rule {
-	rules, ok := rl.rules[clientID]
-	if !ok {
-		return nil
+func (rl *BasicRateLimiter) GetRules(clientID string) ([]Rule, error) {
+	if ruleSet, ok := rl.clients[clientID]; !ok {
+		return nil, fmt.Errorf(errNoRulesForClient)
+	} else {
+		return rl.rules[ruleSet], nil
 	}
-	return rules
-
 }
 
 // SetRules - set rules by rules map
-func (rl *BasicRateLimiter) SetRules(ruleSet map[string][]Rule) {
+func (rl *BasicRateLimiter) SetRules(clientID string, rules []Rule) {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	rl.rules = ruleSet
+
+	if ruleSet, ok := rl.clients[clientID]; !ok {
+		//no rules yet
+		rl.rules = append(rl.rules, rules)
+		rl.clients[clientID] = len(rl.rules) - 1
+	} else {
+		rl.rules[ruleSet] = append(rl.rules[ruleSet], rules...)
+	}
 }
 
 // ResetRules - reset all rules for all clientIDs
 func (rl *BasicRateLimiter) ResetRules() {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	rl.rules = make(map[string][]Rule)
+	rl.clients = make(map[string]int)
+	rl.rules = make([][]Rule, 0)
 }
 
 // CheckLimit - checks for available actions by clientID and actioontype
@@ -87,8 +103,8 @@ func (rl *BasicRateLimiter) CheckLimit(clientID string, actionID uint64) (uint64
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	if ruleSet, ok := rl.rules[clientID]; ok {
-		for _, rule := range ruleSet {
+	if ruleSet, ok := rl.clients[clientID]; ok {
+		for _, rule := range rl.rules[ruleSet] {
 			if rule.ActionID == actionID {
 				if rule.AvailableActions > 0 {
 					rule.AvailableActions--
